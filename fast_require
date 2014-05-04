@@ -1,0 +1,81 @@
+#!/usr/bin/env php
+<?php
+$files = array_splice($argv,1);
+foreach ( $files as $file ) {
+    require $file;
+}
+
+$classes = get_declared_classes();
+$interfaces = get_declared_interfaces();
+
+class FastRequire {
+
+    public $definedFiles = array();
+
+    public $classFiles = array();
+
+    public $preRequiredFiles = array();
+
+    public function __construct() {
+        if ( file_exists("vendor/composer/autoload_files.php") ) {
+            $this->preRequiredFiles = require "vendor/composer/autoload_files.php";
+        }
+
+        $classes = get_declared_classes();
+        foreach( $classes as $c ) {
+            $ref = new ReflectionClass($c);
+            if ( $ref->isUserDefined() ) {
+                $this->classFiles[ $ref->getFilename() ][] = $ref;
+            }
+        }
+    }
+
+    public function writeClass($ref) {
+        if (! $ref->isUserDefined() ) {
+            return false;
+        }
+
+        if ( $intfs = $ref->getInterfaces() ) {
+            foreach( $intfs as $intf ) {
+                $this->writeClass($intf);
+            }
+        }
+
+        if ( $pRef = $ref->getParentClass() ) {
+            $this->writeClass($pRef);
+        }
+
+        $classPath = $ref->getFilename();
+        if ( isset($this->definedFiles[$classPath]) ) {
+            return false;
+        }
+        $this->definedFiles[ $classPath ] = true;
+
+        if ( isset($this->classFiles[ $classPath ]) ) {
+            $classesSameFile = $this->classFiles[ $classPath ];
+            foreach( $classesSameFile as $cref ) {
+                if ( $cref->getName() == $ref->getName() ) {
+                    continue;
+                }
+                $this->writeClass($cref);
+            }
+        }
+
+        if ( in_array( $classPath , $this->preRequiredFiles ) ) {
+            return false;
+        }
+
+        if ( $classPath == __FILE__ ) {
+            return false;
+        }
+
+        // echo "// require for ", $ref->getName(), "\n";
+        echo sprintf('require "%s";',$classPath), "\n";
+    }
+}
+$fr = new FastRequire;
+echo "<?php\n";
+foreach( $classes as $class ) {
+    $ref = new ReflectionClass($class);
+    $fr->writeClass($ref);
+}
