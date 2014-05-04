@@ -9,4 +9,5 @@ Usage
 ---------
 
     fast_require app.php > loader.php
+    php loader.php
 
